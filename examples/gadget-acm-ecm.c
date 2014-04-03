@@ -29,63 +29,120 @@
 
 int main(void)
 {
-	struct state *s;
-	struct gadget *g;
-	struct function *f;
-	struct config *c;
-	struct function *f_acm0, *f_acm1, *f_ecm;
+	usbg_state *s;
+	usbg_gadget *g;
+	usbg_config *c;
+	usbg_function *f_acm0, *f_acm1, *f_ecm;
 	int ret = -EINVAL;
+	int usbg_ret;
 
-	s = usbg_init("/sys/kernel/config");
-	if (!s) {
+	usbg_gadget_attrs g_attrs = {
+			0x0200, /* bcdUSB */
+			0x00, /* Defined at interface level */
+			0x00, /* subclass */
+			0x00, /* device protocol */
+			0x0040, /* Max allowed packet size */
+			VENDOR,
+			PRODUCT,
+			0x0001, /* Verson of device */
+	};
+
+	usbg_gadget_strs g_strs = {
+			"0123456789", /* Serial number */
+			"Foo Inc.", /* Manufacturer */
+			"Bar Gadget" /* Product string */
+	};
+
+	usbg_config_strs c_strs = {
+			"CDC 2xACM+ECM"
+	};
+
+	usbg_ret = usbg_init("/sys/kernel/config", &s);
+	if (usbg_ret != USBG_SUCCESS) {
 		fprintf(stderr, "Error on USB gadget init\n");
-		goto error1;
+		fprintf(stderr, "Error: %s : %s\n", usbg_error_name(usbg_ret),
+				usbg_strerror(usbg_ret));
+		goto out1;
 	}
 
-	g = usbg_create_gadget(s, "g1", VENDOR, PRODUCT);
-	if (!g) {
+	usbg_ret = usbg_create_gadget(s, "g1", &g_attrs, &g_strs, &g);
+	if (usbg_ret != USBG_SUCCESS) {
 		fprintf(stderr, "Error on create gadget\n");
-		goto error2;
+		fprintf(stderr, "Error: %s : %s\n", usbg_error_name(usbg_ret),
+				usbg_strerror(usbg_ret));
+		goto out2;
 	}
-	usbg_set_gadget_serial_number(g, LANG_US_ENG, "0123456789");
-	usbg_set_gadget_manufacturer(g, LANG_US_ENG, "Foo Inc.");
-	usbg_set_gadget_product(g, LANG_US_ENG, "Bar Gadget");
 
-	f_acm0 = usbg_create_function(g, F_ACM, "usb0");
-	if (!f_acm0) {
+	usbg_ret = usbg_create_function(g, F_ACM, "usb0", NULL, &f_acm0);
+	if (usbg_ret != USBG_SUCCESS) {
 		fprintf(stderr, "Error creating acm0 function\n");
-		goto error2;
+		fprintf(stderr, "Error: %s : %s\n", usbg_error_name(usbg_ret),
+				usbg_strerror(usbg_ret));
+		goto out2;
 	}
 
-	f_acm1 = usbg_create_function(g, F_ACM, "usb1");
-	if (!f_acm1) {
+	usbg_ret = usbg_create_function(g, F_ACM, "usb1", NULL, &f_acm1);
+	if (usbg_ret != USBG_SUCCESS) {
 		fprintf(stderr, "Error creating acm1 function\n");
-		goto error2;
+		fprintf(stderr, "Error: %s : %s\n", usbg_error_name(usbg_ret),
+				usbg_strerror(usbg_ret));
+		goto out2;
 	}
 
-	f_ecm = usbg_create_function(g, F_ECM, "usb0");
-	if (!f_ecm) {
+	usbg_ret = usbg_create_function(g, F_ECM, "usb0", NULL, &f_ecm);
+	if (usbg_ret != USBG_SUCCESS) {
 		fprintf(stderr, "Error creating ecm function\n");
-		goto error2;
+		fprintf(stderr, "Error: %s : %s\n", usbg_error_name(usbg_ret),
+				usbg_strerror(usbg_ret));
+		goto out2;
 	}
 
-	c = usbg_create_config(g, "c.1");
-	if (!c) {
+	usbg_ret = usbg_create_config(g, "c.1", NULL /* use defaults */, &c_strs,
+			&c);
+	if (usbg_ret != USBG_SUCCESS) {
 		fprintf(stderr, "Error creating config\n");
-		goto error2;
+		fprintf(stderr, "Error: %s : %s\n", usbg_error_name(usbg_ret),
+				usbg_strerror(usbg_ret));
+		goto out2;
 	}
-	usbg_set_config_string(c, LANG_US_ENG, "CDC 2xACM+ECM");
-	usbg_add_config_function(c, "acm.GS0", f_acm0);
-	usbg_add_config_function(c, "acm.GS1", f_acm1);
-	usbg_add_config_function(c, "ecm.usb0", f_ecm);
 
-	usbg_enable_gadget(g, DEFAULT_UDC);
+	usbg_ret = usbg_add_config_function(c, "acm.GS0", f_acm0);
+	if (usbg_ret != USBG_SUCCESS) {
+		fprintf(stderr, "Error adding acm.GS0\n");
+		fprintf(stderr, "Error: %s : %s\n", usbg_error_name(usbg_ret),
+				usbg_strerror(usbg_ret));
+		goto out2;
+	}
 
-	return 0;
+	usbg_ret = usbg_add_config_function(c, "acm.GS1", f_acm1);
+	if (usbg_ret != USBG_SUCCESS) {
+		fprintf(stderr, "Error adding acm.GS1\n");
+		fprintf(stderr, "Error: %s : %s\n", usbg_error_name(usbg_ret),
+				usbg_strerror(usbg_ret));
+		goto out2;
+	}
 
-error2:
+	usbg_ret = usbg_add_config_function(c, "ecm.usb0", f_ecm);
+	if (usbg_ret != USBG_SUCCESS) {
+		fprintf(stderr, "Error adding ecm.usb0\n");
+		fprintf(stderr, "Error: %s : %s\n", usbg_error_name(usbg_ret),
+				usbg_strerror(usbg_ret));
+		goto out2;
+	}
+
+	usbg_ret = usbg_enable_gadget(g, DEFAULT_UDC);
+	if (usbg_ret != USBG_SUCCESS) {
+		fprintf(stderr, "Error enabling gadget\n");
+		fprintf(stderr, "Error: %s : %s\n", usbg_error_name(usbg_ret),
+				usbg_strerror(usbg_ret));
+		goto out2;
+	}
+
+	ret = 0;
+
+out2:
 	usbg_cleanup(s);
 
-error1:
-	return -EINVAL;
+out1:
+	return ret;
 }
