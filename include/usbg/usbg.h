@@ -25,7 +25,6 @@
 
 /**
  * @file include/usbg/usbg.h
- * @todo Add usbg_remove_[gadget|config|function|binding] APIs
  * @todo Clean up static buffers in structures
  */
 
@@ -42,6 +41,13 @@
 #define USBG_MAX_STR_LENGTH 256
 #define USBG_MAX_PATH_LENGTH PATH_MAX
 #define USBG_MAX_NAME_LENGTH 40
+
+/**
+ * @brief Additional option for usbg_rm_* functions.
+ * @details This option allows to remove all content
+ * of gadget/config/function recursive.
+ */
+#define USBG_RM_RECURSE 1
 
 /*
  * Internal structures
@@ -275,6 +281,59 @@ extern usbg_function *usbg_get_function(usbg_gadget *g,
  * @return Pointer to config or NULL if a matching config isn't found
  */
 extern usbg_config *usbg_get_config(usbg_gadget *g, int id, const char *label);
+
+/* USB gadget/config/function/binding removal */
+
+/**
+ * @brief Remove binding between configuration and function
+ * @details This function frees also the memory allocated for binding
+ * @param b Binding to be removed
+ * @return 0 on success, usbg_error if error occurred
+ */
+extern int usbg_rm_binding(usbg_binding *b);
+
+/**
+ * @brief Remove configuration
+ * @details This function frees also the memory allocated for configuration
+ * @param c Configuration to be removed
+ * @param opts Additional options for configuration removal.
+ * @return 0 on success, usbg_error if error occurred
+ */
+extern int usbg_rm_config(usbg_config *c, int opts);
+
+/**
+ * @brief Remove existing USB function
+ * @details This function frees also the memory allocated for function
+ * @param f Function to be removed
+ * @param opts Additional options for configuration removal.
+ * @return 0 on success, usbg_error if error occurred
+ */
+extern int usbg_rm_function(usbg_function *f, int opts);
+
+/**
+ * @brief Remove existing USB gadget
+ * @details This function frees also the memory allocated for gadget
+ * @param g Gadget to be removed
+ * @param opts Additional options for configuration removal.
+ * @return 0 on success, usbg_error if error occurred
+ */
+extern int usbg_rm_gadget(usbg_gadget *g, int opts);
+
+/**
+ * @brief Remove configuration strings for given language
+ * @param c Pointer to configuration
+ * @param lang Language of strings which should be deleted
+ * @return 0 on success, usbg_error if error occurred
+ */
+extern int usbg_rm_config_strs(usbg_config *c, int lang);
+
+/**
+ * @brief Remove gadget strings for given language
+ * @param g Pointer to gadget
+ * @param lang Language of strings which should be deleted
+ * @return 0 on success, usbg_error if error occurred
+ */
+extern int usbg_rm_gadget_strs(usbg_gadget *g, int lang);
 
 /* USB gadget allocation and configuration */
 

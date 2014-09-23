@@ -146,6 +146,7 @@ static int usbg_translate_error(int error)
 		break;
 	case EACCES:
 	case EROFS:
+	case EPERM:
 		ret = USBG_ERROR_NO_ACCESS;
 		break;
 	case ENOENT:
@@ -677,11 +678,69 @@ static usbg_binding *usbg_allocate_binding(char *path, char *name,
 	return b;
 }
 
+static int ubsg_rm_file(char *path, char *name)
+{
+	int ret = USBG_SUCCESS;
+	int nmb;
+	char buf[USBG_MAX_PATH_LENGTH];
+
+	nmb = snprintf(buf, sizeof(buf), "%s/%s", path, name);
+	if (nmb < sizeof(buf)) {
+		nmb = unlink(buf);
+		if (nmb != 0)
+			ret = usbg_translate_error(errno);
+	} else {
+		ret = USBG_ERROR_PATH_TOO_LONG;
+	}
+
+	return ret;
+}
+
+static int usbg_rm_dir(char *path, char *name)
+{
+	int ret = USBG_SUCCESS;
+	int nmb;
+	char buf[USBG_MAX_PATH_LENGTH];
+
+	nmb = snprintf(buf, sizeof(buf), "%s/%s", path, name);
+	if (nmb < sizeof(buf)) {
+		nmb = rmdir(buf);
+		if (nmb != 0)
+			ret = usbg_translate_error(errno);
+	} else {
+		ret = USBG_ERROR_PATH_TOO_LONG;
+	}
+
+	return ret;
+}
+
+static int usbg_rm_all_dirs(char *path)
+{
+	int ret = USBG_SUCCESS;
+	int n, i;
+	struct dirent **dent;
+
+	n = scandir(path, &dent, file_select, alphasort);
+	if (n >= 0) {
+		for (i = 0; i < n; ++i) {
+			if (ret == USBG_SUCCESS)
+				ret = usbg_rm_dir(path, dent[i]->d_name);
+
+			free(dent[i]);
+		}
+		free(dent);
+	} else {
+		ret = usbg_translate_error(errno);
+	}
+
+	return ret;
+}
+
 static int usbg_parse_function_net_attrs(usbg_function *f,
 		usbg_function_attrs *f_attrs)
 {
 	struct ether_addr *addr;
-	char str_addr[40];
+	char str_addr[USBG_MAX_STR_LENGTH];
 	int ret;
 
 	ret = usbg_read_string(f->path, f->name, "dev_addr", str_addr);
@@ -850,7 +909,7 @@ static int usbg_parse_config_binding(usbg_config *c, char *bpath,
 	usbg_function *f;
 	usbg_binding *b;
 
-	nmb = readlink(bpath, target, sizeof(target));
+	nmb = readlink(bpath, target, sizeof(target) - 1 );
 	if (nmb < 0) {
 		ret = usbg_translate_error(errno);
 		goto out;
@@ -1263,6 +1322,206 @@ usbg_binding *usbg_get_link_binding(usbg_config *c, usbg_function *f)
 	return NULL;
 }
 
+int usbg_rm_binding(usbg_binding *b)
+{
+	int ret = USBG_SUCCESS;
+	usbg_config *c;
+
+	if (!b)
+		return USBG_ERROR_INVALID_PARAM;
+
+	c = b->parent;
+
+	ret = ubsg_rm_file(b->path, b->name);
+	if (ret == USBG_SUCCESS) {
+		TAILQ_REMOVE(&(c->bindings), b, bnode);
+		usbg_free_binding(b);
+	}
+
+	return ret;
+}
+
+int usbg_rm_config(usbg_config *c, int opts)
+{
+	int ret = USBG_ERROR_INVALID_PARAM;
+	usbg_gadget *g;
+
+	if (!c)
+		return ret;
+
+	g = c->parent;
+
+	if (opts & USBG_RM_RECURSE) {
+		/* Recursive flag was given
+		 * so remove all bindings and strings */
+		char spath[USBG_MAX_PATH_LENGTH];
+		int nmb;
+		usbg_binding *b;
+
+		while (!TAILQ_EMPTY(&c->bindings)) {
+			b = TAILQ_FIRST(&c->bindings);
+			ret = usbg_rm_binding(b);
+			if (ret != USBG_SUCCESS)
+				goto out;
+		}
+
+		nmb = snprintf(spath, sizeof(spath), "%s/%s/%s", c->path,
+				c->name, STRINGS_DIR);
+		if (nmb >= sizeof(spath)) {
+			ret = USBG_ERROR_PATH_TOO_LONG;
+			goto out;
+		}
+
+		ret = usbg_rm_all_dirs(spath);
+		if (ret != USBG_SUCCESS)
+			goto out;
+	}
+
+	ret = usbg_rm_dir(c->path, c->name);
+	if (ret == USBG_SUCCESS) {
+		TAILQ_REMOVE(&(g->configs), c, cnode);
+		usbg_free_config(c);
+	}
+
+out:
+	return ret;
+}
+
+int usbg_rm_function(usbg_function *f, int opts)
+{
+	int ret = USBG_ERROR_INVALID_PARAM;
+	usbg_gadget *g;
+
+	if (!f)
+		return ret;
+
+	g = f->parent;
+
+	if (opts & USBG_RM_RECURSE) {
+		/* Recursive flag was given
+		 * so remove all bindings to this function */
+		usbg_config *c;
+		usbg_binding *b;
+
+		TAILQ_FOREACH(c, &g->configs, cnode) {
+			b = TAILQ_FIRST(&c->bindings);
+			while (b != NULL) {
+				if (b->target == f) {
+					usbg_binding *b_next = TAILQ_NEXT(b, bnode);
+					ret = usbg_rm_binding(b);
+					if (ret != USBG_SUCCESS)
+						return ret;
+
+					b = b_next;
+				} else {
+					b = TAILQ_NEXT(b, bnode);
+				}
+			} /* while */
+		} /* TAILQ_FOREACH */
+	}
+
+	ret = usbg_rm_dir(f->path, f->name);
+	if (ret == USBG_SUCCESS) {
+		TAILQ_REMOVE(&(g->functions), f, fnode);
+		usbg_free_function(f);
+	}
+
+	return ret;
+}
+
+int usbg_rm_gadget(usbg_gadget *g, int opts)
+{
+	int ret = USBG_ERROR_INVALID_PARAM;
+	usbg_state *s;
+	if (!g)
+		goto out;
+
+	s = g->parent;
+
+	if (opts & USBG_RM_RECURSE) {
+		/* Recursive flag was given
+		 * so remove all configs and functions
+		 * using recursive flags */
+		usbg_config *c;
+		usbg_function *f;
+		int nmb;
+		char spath[USBG_MAX_PATH_LENGTH];
+
+		while (!TAILQ_EMPTY(&g->configs)) {
+			c = TAILQ_FIRST(&g->configs);
+			ret = usbg_rm_config(c, opts);
+			if (ret != USBG_SUCCESS)
+				goto out;
+		}
+
+		while (!TAILQ_EMPTY(&g->functions)) {
+			f = TAILQ_FIRST(&g->functions);
+			ret = usbg_rm_function(f, opts);
+			if (ret != USBG_SUCCESS)
+				goto out;
+		}
+
+		nmb = snprintf(spath, sizeof(spath), "%s/%s/%s", g->path,
+				g->name, STRINGS_DIR);
+		if (nmb >= sizeof(spath)) {
+			ret = USBG_ERROR_PATH_TOO_LONG;
+			goto out;
+		}
+
+		ret = usbg_rm_all_dirs(spath);
+		if (ret != USBG_SUCCESS)
+			goto out;
+	}
+
+	ret = usbg_rm_dir(g->path, g->name);
+	if (ret == USBG_SUCCESS) {
+		TAILQ_REMOVE(&(s->gadgets), g, gnode);
+		usbg_free_gadget(g);
+	}
+
+out:
+	return ret;
+}
+
+int usbg_rm_config_strs(usbg_config *c, int lang)
+{
+	int ret = USBG_SUCCESS;
+	int nmb;
+	char path[USBG_MAX_PATH_LENGTH];
+
+	if (!c)
+		return USBG_ERROR_INVALID_PARAM;
+
+	nmb = snprintf(path, sizeof(path), "%s/%s/%s/0x%x", c->path, c->name,
+			STRINGS_DIR, lang);
+	if (nmb < sizeof(path))
+		ret = usbg_rm_dir(path, "");
+	else
+		ret = USBG_ERROR_PATH_TOO_LONG;
+
+	return ret;
+}
+
+int usbg_rm_gadget_strs(usbg_gadget *g, int lang)
+{
+	int ret = USBG_SUCCESS;
+	int nmb;
+	char path[USBG_MAX_PATH_LENGTH];
+
+	if (!g)
+		return USBG_ERROR_INVALID_PARAM;
+
+	nmb = snprintf(path, sizeof(path), "%s/%s/%s/0x%x", g->path, g->name,
+			STRINGS_DIR, lang);
+	if (nmb < sizeof(path))
+		ret = usbg_rm_dir(path, "");
+	else
+		ret = USBG_ERROR_PATH_TOO_LONG;
+
+	return ret;
+}
+
+
 static int usbg_create_empty_gadget(usbg_state *s, char *name, usbg_gadget **g)
 {
 	char gpath[USBG_MAX_PATH_LENGTH];
@@ -1653,6 +1912,7 @@ int usbg_create_function(usbg_gadget *g, usbg_function_type type,
 	if (!func) {
 		ERRORNO("allocating function\n");
 		ret = USBG_ERROR_NO_MEM;
+		goto out;
 	}
 
 	free_space = sizeof(fpath) - n;
@@ -1786,7 +2046,7 @@ int usbg_set_config_attrs(usbg_config *c, usbg_config_attrs *c_attrs)
 {
 	int ret = USBG_ERROR_INVALID_PARAM;
 
-	if (c && !c_attrs) {
+	if (c && c_attrs) {
 		ret = usbg_write_dec(c->path, c->name, "MaxPower", c_attrs->bMaxPower);
 		if (ret == USBG_SUCCESS)
 			ret = usbg_write_hex8(c->path, c->name, "bmAttributes",
