@@ -22,6 +22,7 @@
 #include <netinet/ether.h>
 #include <stdint.h>
 #include <limits.h>
+#include <stdio.h> /* For FILE * */
 
 /**
  * @file include/usbg/usbg.h
@@ -216,6 +217,10 @@ typedef enum  {
 	USBG_ERROR_BUSY = -8,
 	USBG_ERROR_NOT_SUPPORTED = -9,
 	USBG_ERROR_PATH_TOO_LONG = -10,
+	USBG_ERROR_INVALID_FORMAT = -11,
+	USBG_ERROR_MISSING_TAG = -12,
+	USBG_ERROR_INVALID_TYPE = -13,
+	USBG_ERROR_INVALID_VALUE = -14,
 	USBG_ERROR_OTHER_ERROR = -99
 } usbg_error;
 
@@ -894,6 +899,111 @@ extern usbg_config *usbg_get_next_config(usbg_config *c);
  * @return Next binding or NULL if end of list.
  */
 extern usbg_binding *usbg_get_next_binding(usbg_binding *b);
+
+/* Import / Export API */
+
+/**
+ * @brief Exports usb function to file
+ * @param f Pointer to function to be exported
+ * @param stream where function should be saved
+ * @return 0 on success, usbg_error otherwise
+ */
+extern int usbg_export_function(usbg_function *f, FILE *stream);
+
+/**
+ * @brief Exports configuration to file
+ * @param c Pointer to configuration to be exported
+ * @param stream where configuration should be saved
+ * @return 0 on success, usbg_error otherwise
+ */
+extern int usbg_export_config(usbg_config *c, FILE *stream);
+
+/**
+ * @brief Exports whole gadget to file
+ * @param g Pointer to gadget to be exported
+ * @param stream where gadget should be saved
+ * @return 0 on success, usbg_error otherwise
+ */
+extern int usbg_export_gadget(usbg_gadget *g, FILE *stream);
+
+/**
+
+/**
+ * @brief Imports usb function from file and adds it to given gadget
+ * @param g Gadget where function should be placed
+ * @param stream from which function should be imported
+ * @param instance name which shuld be used for new function
+ * @param f place for pointer to imported function
+ * if NULL this param will be ignored.
+ * @return 0 on success, usbg_error otherwise
+ */
+extern int usbg_import_function(usbg_gadget *g, FILE *stream,
+				const char *instance, usbg_function **f);
+
+/**
+ * @brief Imports usb configuration from file and adds it to given gadget
+ * @param g Gadget where configuration should be placed
+ * @param stream from which configuration should be imported
+ * @param id which shuld be used for new configuration
+ * @param c place for pointer to imported configuration
+ * if NULL this param will be ignored.
+ * @return 0 on success, usbg_error otherwise
+ */
+extern int usbg_import_config(usbg_gadget *g, FILE *stream, int id,
+				usbg_config **c);
+/**
+ * @brief Imports usb gadget from file
+ * @param s current state of library
+ * @param stream from which gadget should be imported
+ * @param name which shuld be used for new gadget
+ * @param g place for pointer to imported gadget
+ * if NULL this param will be ignored.
+ * @return 0 on success, usbg_error otherwise
+ */
+extern int usbg_import_gadget(usbg_state *s, FILE *stream,
+			      const char *name, usbg_gadget **g);
+
+/**
+ * @brief Get text of error which occurred during last function import
+ * @param g gadget where function import error occurred
+ * @return Text of error or NULL if no error data
+ */
+extern const char *usbg_get_func_import_error_text(usbg_gadget *g);
+
+/**
+ * @brief Get line number where function import error occurred
+ * @param g gadget where function import error occurred
+ * @return line number or value below 0 if no error data
+ */
+extern int usbg_get_func_import_error_line(usbg_gadget *g);
+
+/**
+ * @brief Get text of error which occurred during last config import
+ * @param g gadget where config import error occurred
+ * @return Text of error or NULL if no error data
+ */
+extern const char *usbg_get_config_import_error_text(usbg_gadget *g);
+
+/**
+ * @brief Get line number where config import error occurred
+ * @param g gadget where config import error occurred
+ * @return line number or value below 0 if no error data
+ */
+extern int usbg_get_config_import_error_line(usbg_gadget *g);
+
+/**
+ * @brief Get text of error which occurred during last gadget import
+ * @param s where gadget import error occurred
+ * @return Text of error or NULL if no error data
+ */
+extern const char *usbg_get_gadget_import_error_text(usbg_state *s);
+
+/**
+ * @brief Get line number where gadget import error occurred
+ * @param s where gadget import error occurred
+ * @return line number or value below 0 if no error data
+ */
+extern int usbg_get_gadget_import_error_line(usbg_state *s);
 
 /**
  * @}
