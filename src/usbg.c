@@ -2060,6 +2060,7 @@ int usbg_create_config(usbg_gadget *g, int id, const char *label,
 	n = snprintf(&(cpath[n]), free_space, "/%s", (*c)->name);
 	if (n < free_space) {
 		ret = USBG_ERROR_PATH_TOO_LONG;
+		goto out;
 	}
 
 	ret = mkdir(cpath, S_IRWXU | S_IRWXG | S_IRWXO);
