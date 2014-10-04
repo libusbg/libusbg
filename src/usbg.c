@@ -93,6 +93,19 @@ struct usbg_binding
 	char *path;
 };
 
+#define ARRAY_SIZE(array) (sizeof(array)/sizeof(*array))
+
+#define ARRAY_SIZE_SENTINEL(array, size)				\
+	static void __attribute__ ((unused)) array##_size_sentinel() 	\
+	{								\
+		char array##_smaller_than_expected[			\
+			(int)(ARRAY_SIZE(array) - size)]		\
+			__attribute__ ((unused));			\
+									\
+		char array##_larger_than_expected[			\
+			(int)(size - ARRAY_SIZE(array))]		\
+			__attribute__ ((unused));			\
+	}
 /**
  * @var function_names
  * @brief Name strings for supported USB function types
@@ -111,6 +124,8 @@ const char *function_names[] =
 	"ffs",
 };
 
+ARRAY_SIZE_SENTINEL(function_names, USBG_FUNCTION_TYPE_MAX);
+
 const char *gadget_attr_names[] =
 {
 	"bcdUSB",
@@ -122,6 +137,8 @@ const char *gadget_attr_names[] =
 	"idProduct",
 	"bcdDevice"
 };
+
+ARRAY_SIZE_SENTINEL(gadget_attr_names, USBG_GADGET_ATTR_MAX);
 
 #define ERROR(msg, ...) do {\
                         fprintf(stderr, "%s()  "msg" \n", \
@@ -312,8 +329,7 @@ const char *usbg_strerror(usbg_error e)
 
 int usbg_lookup_function_type(const char *name)
 {
-	int i = 0;
-	int max = sizeof(function_names)/sizeof(char *);
+	int i = USBG_FUNCTION_TYPE_MIN;
 
 	if (!name)
 		return USBG_ERROR_INVALID_PARAM;
@@ -322,21 +338,21 @@ int usbg_lookup_function_type(const char *name)
 		if (!strcmp(name, function_names[i]))
 			return i;
 		i++;
-	} while (i != max);
+	} while (i != USBG_FUNCTION_TYPE_MAX);
 
 	return USBG_ERROR_NOT_FOUND;
 }
 
 const const char *usbg_get_function_type_str(usbg_function_type type)
 {
-	return type >= 0 && type < sizeof(function_names)/sizeof(char *) ?
-			function_names[type] : NULL;
+	return type >= USBG_FUNCTION_TYPE_MIN &&
+		type < USBG_FUNCTION_TYPE_MAX ?
+		function_names[type] : NULL;
 }
 
 int usbg_lookup_gadget_attr(const char *name)
 {
-	int i = 0;
-	int max = sizeof(gadget_attr_names)/sizeof(char *);
+	int i = USBG_GADGET_ATTR_MIN;
 
 	if (!name)
 		return USBG_ERROR_INVALID_PARAM;
@@ -345,15 +361,16 @@ int usbg_lookup_gadget_attr(const char *name)
 		if (!strcmp(name, gadget_attr_names[i]))
 			return i;
 		i++;
-	} while (i != max);
+	} while (i != USBG_GADGET_ATTR_MAX);
 
 	return USBG_ERROR_NOT_FOUND;
 }
 
 const const char *usbg_get_gadget_attr_str(usbg_gadget_attr attr)
 {
-	return attr >= 0 && attr < sizeof(gadget_attr_names)/sizeof(char *) ?
-			gadget_attr_names[attr] : NULL;
+	return attr >= USBG_GADGET_ATTR_MIN &&
+		attr < USBG_GADGET_ATTR_MAX ?
+		gadget_attr_names[attr] : NULL;
 }
 
 static usbg_error usbg_split_function_instance_type(const char *full_name,
