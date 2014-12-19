@@ -93,6 +93,19 @@ struct usbg_binding
 	char *path;
 };
 
+#define ARRAY_SIZE(array) (sizeof(array)/sizeof(*array))
+
+#define ARRAY_SIZE_SENTINEL(array, size)				\
+	static void __attribute__ ((unused)) array##_size_sentinel() 	\
+	{								\
+		char array##_smaller_than_expected[			\
+			(int)(ARRAY_SIZE(array) - size)]		\
+			__attribute__ ((unused));			\
+									\
+		char array##_larger_than_expected[			\
+			(int)(size - ARRAY_SIZE(array))]		\
+			__attribute__ ((unused));			\
+	}
 /**
  * @var function_names
  * @brief Name strings for supported USB function types
@@ -110,6 +123,22 @@ const char *function_names[] =
 	"phonet",
 	"ffs",
 };
+
+ARRAY_SIZE_SENTINEL(function_names, USBG_FUNCTION_TYPE_MAX);
+
+const char *gadget_attr_names[] =
+{
+	"bcdUSB",
+	"bDeviceClass",
+	"bDeviceSubClass",
+	"bDeviceProtocol",
+	"bMaxPacketSize0",
+	"idVendor",
+	"idProduct",
+	"bcdDevice"
+};
+
+ARRAY_SIZE_SENTINEL(gadget_attr_names, USBG_GADGET_ATTR_MAX);
 
 #define ERROR(msg, ...) do {\
                         fprintf(stderr, "%s()  "msg" \n", \
@@ -158,6 +187,7 @@ static int usbg_translate_error(int error)
 	case ENOTDIR:
 		ret = USBG_ERROR_NOT_FOUND;
 		break;
+	case ERANGE:
 	case EINVAL:
 	case USBG_ERROR_INVALID_PARAM:
 		ret = USBG_ERROR_INVALID_PARAM;
@@ -297,30 +327,50 @@ const char *usbg_strerror(usbg_error e)
 	return ret;
 }
 
-static int usbg_lookup_function_type(const char *name)
+int usbg_lookup_function_type(const char *name)
 {
-	int i = 0;
-	int max = sizeof(function_names)/sizeof(char *);
+	int i = USBG_FUNCTION_TYPE_MIN;
 
 	if (!name)
-		return -1;
+		return USBG_ERROR_INVALID_PARAM;
 
 	do {
 		if (!strcmp(name, function_names[i]))
-			break;
+			return i;
 		i++;
-	} while (i != max);
+	} while (i != USBG_FUNCTION_TYPE_MAX);
 
-	if (i == max)
-		i = -1;
-
-	return i;
+	return USBG_ERROR_NOT_FOUND;
 }
 
 const const char *usbg_get_function_type_str(usbg_function_type type)
 {
-	return type > 0 && type < sizeof(function_names)/sizeof(char *) ?
-			function_names[type] : NULL;
+	return type >= USBG_FUNCTION_TYPE_MIN &&
+		type < USBG_FUNCTION_TYPE_MAX ?
+		function_names[type] : NULL;
+}
+
+int usbg_lookup_gadget_attr(const char *name)
+{
+	int i = USBG_GADGET_ATTR_MIN;
+
+	if (!name)
+		return USBG_ERROR_INVALID_PARAM;
+
+	do {
+		if (!strcmp(name, gadget_attr_names[i]))
+			return i;
+		i++;
+	} while (i != USBG_GADGET_ATTR_MAX);
+
+	return USBG_ERROR_NOT_FOUND;
+}
+
+const const char *usbg_get_gadget_attr_str(usbg_gadget_attr attr)
+{
+	return attr >= USBG_GADGET_ATTR_MIN &&
+		attr < USBG_GADGET_ATTR_MAX ?
+		gadget_attr_names[attr] : NULL;
 }
 
 static usbg_error usbg_split_function_instance_type(const char *full_name,
@@ -519,6 +569,7 @@ static int usbg_write_int(const char *path, const char *name, const char *file,
 }
 
 #define usbg_write_dec(p, n, f, v)	usbg_write_int(p, n, f, v, "%d\n")
+#define usbg_write_hex(p, n, f, v)	usbg_write_int(p, n, f, v, "0x%x\n")
 #define usbg_write_hex16(p, n, f, v)	usbg_write_int(p, n, f, v, "0x%04x\n")
 #define usbg_write_hex8(p, n, f, v)	usbg_write_int(p, n, f, v, "0x%02x\n")
 
@@ -1257,7 +1308,7 @@ static int usbg_init_state(char *path, usbg_state *s)
 
 	ret = usbg_parse_gadgets(path, s);
 	if (ret != USBG_SUCCESS)
-		ERRORNO("unable to parse %s\n", path);
+		ERROR("unable to parse %s\n", path);
 
 	return ret;
 }
@@ -1296,7 +1347,7 @@ int usbg_init(const char *configfs_path, usbg_state **state)
 
 	ret = usbg_init_state(path, s);
 	if (ret != USBG_SUCCESS) {
-		ERRORNO("couldn't init gadget state\n");
+		ERROR("couldn't init gadget state\n");
 		usbg_free_state(s);
 		goto out;
 	}
@@ -1316,20 +1367,25 @@ void usbg_cleanup(usbg_state *s)
 	usbg_free_state(s);
 }
 
+const char *usbg_get_configfs_path(usbg_state *s)
+{
+	return s ? s->path : NULL;
+}
+
 size_t usbg_get_configfs_path_len(usbg_state *s)
 {
 	return s ? strlen(s->path) : USBG_ERROR_INVALID_PARAM;
 }
 
-int usbg_get_configfs_path(usbg_state *s, char *buf, size_t len)
+int usbg_cpy_configfs_path(usbg_state *s, char *buf, size_t len)
 {
-	int ret = USBG_SUCCESS;
-	if (s && buf)
-		strncpy(buf, s->path, len);
-	else
-		ret = USBG_ERROR_INVALID_PARAM;
+	if (!s || !buf || len == 0)
+		return USBG_ERROR_INVALID_PARAM;
 
-	return ret;
+	buf[--len] = '\0';
+	strncpy(buf, s->path, len);
+
+	return USBG_SUCCESS;
 }
 
 usbg_gadget *usbg_get_gadget(usbg_state *s, const char *name)
@@ -1704,20 +1760,25 @@ int usbg_get_gadget_attrs(usbg_gadget *g, usbg_gadget_attrs *g_attrs)
 			: USBG_ERROR_INVALID_PARAM;
 }
 
+const char *usbg_get_gadget_name(usbg_gadget *g)
+{
+	return g ? g->name : NULL;
+}
+
 size_t usbg_get_gadget_name_len(usbg_gadget *g)
 {
 	return g ? strlen(g->name) : USBG_ERROR_INVALID_PARAM;
 }
 
-int usbg_get_gadget_name(usbg_gadget *g, char *buf, size_t len)
+int usbg_cpy_gadget_name(usbg_gadget *g, char *buf, size_t len)
 {
-	int ret = USBG_SUCCESS;
-	if (g && buf)
-		strncpy(buf, g->name, len);
-	else
-		ret = USBG_ERROR_INVALID_PARAM;
+	if (!g || !buf || len == 0)
+		return USBG_ERROR_INVALID_PARAM;
 
-	return ret;
+	buf[--len] = '\0';
+	strncpy(buf, g->name, len);
+
+	return USBG_SUCCESS;
 }
 
 size_t usbg_get_gadget_udc_len(usbg_gadget *g)
@@ -1727,12 +1788,48 @@ size_t usbg_get_gadget_udc_len(usbg_gadget *g)
 
 int usbg_get_gadget_udc(usbg_gadget *g, char *buf, size_t len)
 {
-	int ret = USBG_SUCCESS;
-	if (g && buf)
-		strncpy(buf, g->udc, len);
-	else
-		ret = USBG_ERROR_INVALID_PARAM;
+	if (!g || !buf || len == 0)
+		return USBG_ERROR_INVALID_PARAM;
 
+	buf[--len] = '\0';
+	strncpy(buf, g->udc, len);
+
+	return USBG_SUCCESS;
+}
+
+int usbg_set_gadget_attr(usbg_gadget *g, usbg_gadget_attr attr, int val)
+{
+	const char *attr_name;
+	int ret = USBG_ERROR_INVALID_PARAM;
+
+	if (!g)
+		goto out;
+
+	attr_name = usbg_get_gadget_attr_str(attr);
+	if (!attr_name)
+		goto out;
+
+	ret = usbg_write_hex(g->path, g->name, attr_name, val);
+
+out:
+	return ret;
+}
+
+int usbg_get_gadget_attr(usbg_gadget *g, usbg_gadget_attr attr)
+{
+	const char *attr_name;
+	int ret = USBG_ERROR_INVALID_PARAM;
+
+	if (!g)
+		goto out;
+
+	attr_name = usbg_get_gadget_attr_str(attr);
+	if (!attr_name)
+		goto out;
+
+	usbg_read_hex(g->path, g->name, attr_name, &ret);
+
+out:
 	return ret;
 }
 
@@ -1990,7 +2087,7 @@ int usbg_create_function(usbg_gadget *g, usbg_function_type type,
 	*f = usbg_allocate_function(fpath, type, instance, g);
 	func = *f;
 	if (!func) {
-		ERRORNO("allocating function\n");
+		ERROR("allocating function\n");
 		ret = USBG_ERROR_NO_MEM;
 		goto out;
 	}
@@ -2023,7 +2120,7 @@ int usbg_create_config(usbg_gadget *g, int id, const char *label,
 		usbg_config_attrs *c_attrs, usbg_config_strs *c_strs, usbg_config **c)
 {
 	char cpath[USBG_MAX_PATH_LENGTH];
-	usbg_config *conf;
+	usbg_config *conf = NULL;
 	int ret = USBG_ERROR_INVALID_PARAM;
 	int n, free_space;
 
@@ -2050,7 +2147,7 @@ int usbg_create_config(usbg_gadget *g, int id, const char *label,
 	*c = usbg_allocate_config(cpath, label, id, g);
 	conf = *c;
 	if (!conf) {
-		ERRORNO("allocating configuration\n");
+		ERROR("allocating configuration\n");
 		ret = USBG_ERROR_NO_MEM;
 		goto out;
 	}
@@ -2058,8 +2155,10 @@ int usbg_create_config(usbg_gadget *g, int id, const char *label,
 	free_space = sizeof(cpath) - n;
 	/* Append string at the end of previous one */
 	n = snprintf(&(cpath[n]), free_space, "/%s", (*c)->name);
-	if (n < free_space) {
+	if (n >= free_space) {
 		ret = USBG_ERROR_PATH_TOO_LONG;
+		usbg_free_config(conf);
+		goto out;
 	}
 
 	ret = mkdir(cpath, S_IRWXU | S_IRWXG | S_IRWXO);
@@ -2085,20 +2184,25 @@ out:
 	return ret;
 }
 
+const char *usbg_get_config_label(usbg_config *c)
+{
+	return c ? c->label : NULL;
+}
+
 size_t usbg_get_config_label_len(usbg_config *c)
 {
 	return c ? strlen(c->label) : USBG_ERROR_INVALID_PARAM;
 }
 
-int usbg_get_config_label(usbg_config *c, char *buf, size_t len)
+int usbg_cpy_config_label(usbg_config *c, char *buf, size_t len)
 {
-	int ret = USBG_SUCCESS;
-	if (c && buf)
-		strncpy(buf, c->label, len);
-	else
-		ret = USBG_ERROR_INVALID_PARAM;
+	if (!c || !buf || len == 0)
+		return USBG_ERROR_INVALID_PARAM;
 
-	return ret;
+	buf[--len] = '\0';
+	strncpy(buf, c->label, len);
+
+	return USBG_SUCCESS;
 }
 
 int usbg_get_config_id(usbg_config *c)
@@ -2106,20 +2210,25 @@ int usbg_get_config_id(usbg_config *c)
 	return c ? c->id : USBG_ERROR_INVALID_PARAM;
 }
 
+const char *usbg_get_function_instance(usbg_function *f)
+{
+	return f ? f->instance : NULL;
+}
+
 size_t usbg_get_function_instance_len(usbg_function *f)
 {
 	return f ? strlen(f->instance) : USBG_ERROR_INVALID_PARAM;
 }
 
-int usbg_get_function_instance(usbg_function *f, char *buf, size_t len)
+int usbg_cpy_function_instance(usbg_function *f, char *buf, size_t len)
 {
-	int ret = USBG_SUCCESS;
-	if (f && buf)
-		strncpy(buf, f->instance, len);
-	else
-		ret = USBG_ERROR_INVALID_PARAM;
+	if (!f || !buf || len == 0)
+		return USBG_ERROR_INVALID_PARAM;
 
-	return ret;
+	buf[--len] = '\0';
+	strncpy(buf, f->instance, len);
+
+	return USBG_SUCCESS;
 }
 
 int usbg_set_config_attrs(usbg_config *c, usbg_config_attrs *c_attrs)
@@ -2265,20 +2374,25 @@ usbg_function *usbg_get_binding_target(usbg_binding *b)
 	return b ? b->target : NULL;
 }
 
+const char *usbg_get_binding_name(usbg_binding *b)
+{
+	return b ? b->name : NULL;
+}
+
 size_t usbg_get_binding_name_len(usbg_binding *b)
 {
 	return b ? strlen(b->name) : USBG_ERROR_INVALID_PARAM;
 }
 
-int usbg_get_binding_name(usbg_binding *b, char *buf, size_t len)
+int usbg_cpy_binding_name(usbg_binding *b, char *buf, size_t len)
 {
-	int ret = USBG_SUCCESS;
-	if (b && buf)
-		strncpy(buf, b->name, len);
-	else
-		ret = USBG_ERROR_INVALID_PARAM;
+	if (!b || !buf || len == 0)
+		return USBG_ERROR_INVALID_PARAM;
 
-	return ret;
+	buf[--len] = '\0';
+	strncpy(buf, b->name, len);
+
+	return USBG_SUCCESS;
 }
 
 int usbg_get_udcs(struct dirent ***udc_list)
@@ -3123,7 +3237,6 @@ static int usbg_export_gadget_prep(usbg_gadget *g, config_setting_t *root)
 	config_setting_t *node;
 	int ret = USBG_ERROR_NO_MEM;
 	int usbg_ret;
-	int cfg_ret;
 
 	/* We don't export name tag because name should be given during
 	 * loading of gadget */
@@ -3557,7 +3670,6 @@ out:
 static int usbg_import_config_bindings(config_setting_t *root, usbg_config *c)
 {
 	config_setting_t *node;
-	int usbg_ret, cfg_ret;
 	int ret = USBG_SUCCESS;
 	int count, i;
 
@@ -3586,7 +3698,6 @@ static int usbg_import_config_strs_lang(config_setting_t *root, usbg_config *c)
 	int lang;
 	const char *str;
 	usbg_config_strs c_strs = {0};
-	int usbg_ret, cfg_ret;
 	int ret = USBG_ERROR_INVALID_TYPE;
 
 	node = config_setting_get_member(root, USBG_LANG_TAG);
@@ -3622,7 +3733,6 @@ out:
 static int usbg_import_config_strings(config_setting_t *root, usbg_config *c)
 {
 	config_setting_t *node;
-	int usbg_ret, cfg_ret;
 	int ret = USBG_SUCCESS;
 	int count, i;
 
@@ -3646,9 +3756,8 @@ static int usbg_import_config_strings(config_setting_t *root, usbg_config *c)
 static int usbg_import_config_attrs(config_setting_t *root, usbg_config *c)
 {
 	config_setting_t *node;
-	int usbg_ret, cfg_ret;
+	int usbg_ret;
 	int bmAttributes, bMaxPower;
-	short format;
 	int ret = USBG_ERROR_INVALID_TYPE;
 
 	node = config_setting_get_member(root, "bmAttributes");
@@ -3771,7 +3880,6 @@ error2:
 static int usbg_import_gadget_configs(config_setting_t *root, usbg_gadget *g)
 {
 	config_setting_t *node, *id_node;
-	int usbg_ret, cfg_ret;
 	int id;
 	usbg_config *c;
 	int ret = USBG_SUCCESS;
@@ -3816,7 +3924,6 @@ static int usbg_import_gadget_configs(config_setting_t *root, usbg_gadget *g)
 static int usbg_import_gadget_functions(config_setting_t *root, usbg_gadget *g)
 {
 	config_setting_t *node, *inst_node;
-	int usbg_ret, cfg_ret;
 	const char *instance;
 	const char *label;
 	usbg_function *f;
@@ -3882,7 +3989,6 @@ static int usbg_import_gadget_strs_lang(config_setting_t *root, usbg_gadget *g)
 	int lang;
 	const char *str;
 	usbg_gadget_strs g_strs = {0};
-	int usbg_ret, cfg_ret;
 	int ret = USBG_ERROR_INVALID_TYPE;
 
 	node = config_setting_get_member(root, USBG_LANG_TAG);
@@ -3924,7 +4030,6 @@ out:
 static int usbg_import_gadget_strings(config_setting_t *root, usbg_gadget *g)
 {
 	config_setting_t *node;
-	int usbg_ret, cfg_ret;
 	int ret = USBG_SUCCESS;
 	int count, i;
 
@@ -3949,7 +4054,7 @@ static int usbg_import_gadget_strings(config_setting_t *root, usbg_gadget *g)
 static int usbg_import_gadget_attrs(config_setting_t *root, usbg_gadget *g)
 {
 	config_setting_t *node;
-	int usbg_ret, cfg_ret;
+	int usbg_ret;
 	int val;
 	int ret = USBG_ERROR_INVALID_TYPE;
 
