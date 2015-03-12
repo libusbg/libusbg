@@ -17,6 +17,10 @@
 #ifndef __USBG_H__
 #define __USBG_H__
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <dirent.h>
 #include <sys/queue.h>
 #include <netinet/ether.h>
@@ -1008,4 +1012,9 @@ extern int usbg_get_gadget_import_error_line(usbg_state *s);
 /**
  * @}
  */
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif /* __USBG_H__ */
