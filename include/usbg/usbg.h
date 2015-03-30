@@ -17,6 +17,10 @@
 #ifndef __USBG_H__
 #define __USBG_H__
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <dirent.h>
 #include <sys/queue.h>
 #include <netinet/ether.h>
@@ -381,7 +385,7 @@ extern int usbg_create_gadget_vid_pid(usbg_state *s, const char *name,
  * @return 0 on success usbg_error if error occurred
  */
 extern int usbg_create_gadget(usbg_state *s, const char *name,
-		usbg_gadget_attrs *g_attrs, usbg_gadget_strs *g_strs,
+		const usbg_gadget_attrs *g_attrs, const usbg_gadget_strs *g_strs,
 			      usbg_gadget **g);
 
 /**
@@ -391,7 +395,7 @@ extern int usbg_create_gadget(usbg_state *s, const char *name,
  * @return 0 on success usbg_error if error occurred
  */
 extern int usbg_set_gadget_attrs(usbg_gadget *g,
-		usbg_gadget_attrs *g_attrs);
+		const usbg_gadget_attrs *g_attrs);
 
 /**
  * @brief Get the USB gadget strings
@@ -504,7 +508,7 @@ extern int usbg_get_gadget_strs(usbg_gadget *g, int lang,
  * @return 0 on success usbg_error if error occurred
  */
 extern int usbg_set_gadget_strs(usbg_gadget *g, int lang,
-		usbg_gadget_strs *g_strs);
+		const usbg_gadget_strs *g_strs);
 
 /**
  * @brief Set the serial number for a gadget
@@ -549,7 +553,7 @@ extern int usbg_set_gadget_product(usbg_gadget *g, int lang,
  * @return 0 on success usbg_error if error occurred
  */
 extern int usbg_create_function(usbg_gadget *g, usbg_function_type type,
-		 const char *instance, usbg_function_attrs *f_attrs,
+		 const char *instance, const usbg_function_attrs *f_attrs,
 				usbg_function **f);
 
 /**
@@ -589,7 +593,8 @@ extern const char *usbg_get_function_type_str(usbg_function_type type);
  * @return 0 on success usbg_error if error occurred
  */
 extern int usbg_create_config(usbg_gadget *g, int id, const char *label,
-		usbg_config_attrs *c_attrs, usbg_config_strs *c_strs, usbg_config **c);
+		const usbg_config_attrs *c_attrs, const usbg_config_strs *c_strs,
+		usbg_config **c);
 
 /**
  * @brief Get config label length
@@ -621,7 +626,7 @@ extern int usbg_get_config_id(usbg_config *c);
  * @return 0 on success or usbg_error if error occurred.
  */
 extern int usbg_set_config_attrs(usbg_config *c,
-		usbg_config_attrs *c_attrs);
+		const usbg_config_attrs *c_attrs);
 
 /**
  * @brief Get the USB configuration strings
@@ -665,7 +670,7 @@ extern int usbg_get_config_strs(usbg_config *c, int lang,
  * @return 0 on success, usbg_error on failure.
  */
 extern int usbg_set_config_strs(usbg_config *c, int lang,
-		usbg_config_strs *c_strs);
+		const usbg_config_strs *c_strs);
 
 /**
  * @brief Set the configuration string
@@ -778,7 +783,8 @@ extern int usbg_get_function_attrs(usbg_function *f,
  * @param f_attrs Attributes to be set
  * @return 0 on success, usbg_error if error occurred
  */
-extern int usbg_set_function_attrs(usbg_function *f, usbg_function_attrs *f_attrs);
+extern int usbg_set_function_attrs(usbg_function *f,
+		const usbg_function_attrs *f_attrs);
 
 /**
  * @brief Set USB function network device address
@@ -1008,4 +1014,9 @@ extern int usbg_get_gadget_import_error_line(usbg_state *s);
 /**
  * @}
  */
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif /* __USBG_H__ */
