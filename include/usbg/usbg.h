@@ -926,7 +926,6 @@ extern int usbg_export_config(usbg_config *c, FILE *stream);
  */
 extern int usbg_export_gadget(usbg_gadget *g, FILE *stream);
 
-/**
 
 /**
  * @brief Imports usb function from file and adds it to given gadget
