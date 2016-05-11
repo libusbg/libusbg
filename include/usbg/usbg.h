@@ -149,6 +149,7 @@ typedef enum
 	F_RNDIS,
 	F_PHONET,
 	F_FFS
+	F_PRINTER,
 } usbg_function_type;
 
 /**
@@ -189,6 +190,15 @@ typedef struct {
 } usbg_f_ffs_attrs;
 
 /**
+ * @typedef usbg_f_printer_attrs
+ * @brief Attributes for PRINTER USB functions
+ */
+typedef struct {
+	char pnp_string[USBG_MAX_STR_LENGTH];
+	int q_len;
+} usbg_f_printer_attrs;
+
+/**
  * @typedef attrs
  * @brief Attributes for a given function type
  */
@@ -197,6 +207,7 @@ typedef union {
 	usbg_f_net_attrs net;
 	usbg_f_phonet_attrs phonet;
 	usbg_f_ffs_attrs ffs;
+	usbg_f_printer_attrs printer;
 } usbg_function_attrs;
 
 /* Error codes */
