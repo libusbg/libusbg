@@ -109,6 +109,7 @@ const char *function_names[] =
 	"rndis",
 	"phonet",
 	"ffs",
+	"printer",
 };
 
 #define ERROR(msg, ...) do {\
@@ -824,6 +825,21 @@ out:
 	return ret;
 }
 
+static int usbg_parse_function_printer_attrs(usbg_function *f,
+		usbg_function_attrs *f_attrs)
+{
+	int ret;
+
+	ret = usbg_read_string(f->path, f->name, "pnp_string", f_attrs->printer.pnp_string);
+	if (ret != USBG_SUCCESS)
+		goto out;
+
+	ret = usbg_read_dec(f->path, f->name, "q_len", &(f_attrs->printer.q_len));
+
+out:
+	return ret;
+}
+
 static int usbg_parse_function_attrs(usbg_function *f,
 		usbg_function_attrs *f_attrs)
 {
@@ -852,6 +868,9 @@ static int usbg_parse_function_attrs(usbg_function *f,
 			sizeof(f_attrs->ffs.dev_name) - 1);
 		f_attrs->ffs.dev_name[sizeof(f_attrs->ffs.dev_name) - 1] = '\0';
 		ret = 0;
+		break;
+	case F_PRINTER:
+		ret = usbg_parse_function_printer_attrs(f, f_attrs);
 		break;
 	default:
 		ERROR("Unsupported function type\n");
@@ -2383,6 +2402,20 @@ out:
 	return ret;
 }
 
+int usbg_set_function_printer_attrs(usbg_function *f, usbg_f_printer_attrs *attrs)
+{
+	int ret = USBG_SUCCESS;
+
+	ret = usbg_write_string(f->path, f->name, "pnp_string", attrs->pnp_string);
+	if (ret != USBG_SUCCESS)
+		goto out;
+
+	ret = usbg_write_dec(f->path, f->name, "q_len", attrs->q_len);
+
+out:
+	return ret;
+}
+
 int  usbg_set_function_attrs(usbg_function *f, usbg_function_attrs *f_attrs)
 {
 	int ret = USBG_ERROR_INVALID_PARAM;
@@ -2417,6 +2450,9 @@ int  usbg_set_function_attrs(usbg_function *f, usbg_function_attrs *f_attrs)
 		 * empty string which means nop */
 		ret = f_attrs->ffs.dev_name[0] ? USBG_ERROR_INVALID_PARAM
 			: USBG_SUCCESS;
+		break;
+	case F_PRINTER:
+		ret = usbg_set_function_printer_attrs(f, &f_attrs->printer);
 		break;
 	default:
 		ERROR("Unsupported function type\n");
